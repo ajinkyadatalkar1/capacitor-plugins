@@ -20,6 +20,7 @@ import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.NotificationParams;
 import com.google.firebase.messaging.RemoteMessage;
 import java.util.Arrays;
+import java.util.Map;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -27,7 +28,7 @@ import org.json.JSONObject;
     name = "PushNotifications",
     permissions = @Permission(strings = { Manifest.permission.POST_NOTIFICATIONS }, alias = PushNotificationsPlugin.PUSH_NOTIFICATIONS)
 )
-public class PushNotificationsPlugin extends Plugin {
+public class PushNotificationsPlugin extends Plugin  {
 
     static final String PUSH_NOTIFICATIONS = "receive";
 
@@ -49,7 +50,6 @@ public class PushNotificationsPlugin extends Plugin {
             fireNotification(lastMessage);
             lastMessage = null;
         }
-
         notificationChannelManager = new NotificationChannelManager(getActivity(), notificationManager, getConfig());
     }
 
@@ -227,13 +227,14 @@ public class PushNotificationsPlugin extends Plugin {
         }
     }
 
-    public static void sendRemoteMessage(RemoteMessage remoteMessage) {
+    public static void sendRemoteMessage(RemoteMessage remoteMessage, Context context) {
         PushNotificationsPlugin pushPlugin = PushNotificationsPlugin.getPushNotificationsInstance();
-        if (pushPlugin != null) {
+        if (pushPlugin != null)
             pushPlugin.fireNotification(remoteMessage);
-        } else {
+        else if (pushPlugin == null && context != null)
+            new FireNotifications(context, remoteMessage);
+        else
             lastMessage = remoteMessage;
-        }
     }
 
     public void fireNotification(RemoteMessage remoteMessage) {
@@ -258,11 +259,11 @@ public class PushNotificationsPlugin extends Plugin {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         try {
                             ApplicationInfo applicationInfo = getContext()
-                                .getPackageManager()
-                                .getApplicationInfo(
-                                    getContext().getPackageName(),
-                                    PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA)
-                                );
+                                    .getPackageManager()
+                                    .getApplicationInfo(
+                                            getContext().getPackageName(),
+                                            PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA)
+                                    );
                             bundle = applicationInfo.metaData;
                         } catch (PackageManager.NameNotFoundException e) {
                             e.printStackTrace();
@@ -275,19 +276,18 @@ public class PushNotificationsPlugin extends Plugin {
                         NotificationParams params = new NotificationParams(remoteMessage.toIntent().getExtras());
 
                         String channelId = CommonNotificationBuilder.getOrCreateChannel(
-                            getContext(),
-                            params.getNotificationChannelId(),
-                            bundle
+                                getContext(),
+                                params.getNotificationChannelId(),
+                                bundle
                         );
 
                         CommonNotificationBuilder.DisplayNotificationInfo notificationInfo = CommonNotificationBuilder.createNotificationInfo(
-                            getContext(),
-                            getContext(),
-                            params,
-                            channelId,
-                            bundle
+                                getContext(),
+                                getContext(),
+                                params,
+                                channelId,
+                                bundle
                         );
-
                         notificationManager.notify(notificationInfo.tag, notificationInfo.id, notificationInfo.notificationBuilder.build());
                     }
                 }
@@ -302,9 +302,17 @@ public class PushNotificationsPlugin extends Plugin {
             }
         }
 
+        Map<String, String> message = remoteMessage.getData();
+        if(!message.isEmpty())  {
+            new FireNotifications(getContext(), remoteMessage);
+            String link = remoteMessage.getData().get("link");
+            if (link != null) {
+                remoteMessageData.put("link", link);
+            }
+        }
+
         notifyListeners("pushNotificationReceived", remoteMessageData, true);
     }
-
     public static PushNotificationsPlugin getPushNotificationsInstance() {
         if (staticBridge != null && staticBridge.getWebView() != null) {
             PluginHandle handle = staticBridge.getPlugin("PushNotifications");
